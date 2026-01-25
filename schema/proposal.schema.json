@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Proposal Record",
+  "type": "object",
+  "additionalProperties": false,
+
+  "properties": {
+    "proposal_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unique identifier for the proposal"
+    },
+
+    "applicant_name": {
+      "type": ["string", "null"],
+      "description": "Full name of the applicant or MASKED",
+      "pattern": "^[A-Za-z ]+$"
+    },
+
+    "applicant_email": {
+      "type": ["string", "null"],
+      "format": "email",
+      "description": "Email address of the applicant or MASKED"
+    },
+
+    "has_security": {
+      "type": "boolean",
+      "description": "Indicates whether the proposal includes security arrangements"
+    },
+
+    "security_types": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "List of security mechanisms if applicable"
+    }
+  },
+
+  "required": ["proposal_id", "has_security"],
+
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "has_security": { "const": true }
+        }
+      },
+      "then": {
+        "required": ["security_types"]
+      }
+    }
+  ]
+}

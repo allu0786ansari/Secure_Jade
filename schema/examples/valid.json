@@ -1,0 +1,7 @@
+{
+  "proposal_id": "PROP-001",
+  "applicant_name": "Rahul Sharma",
+  "applicant_email": "rahul.sharma@example.com",
+  "has_security": true,
+  "security_types": ["CCTV", "Security Guards"]
+}
