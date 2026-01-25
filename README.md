@@ -1,53 +1,339 @@
-Ja Assure — Ground-Truth Data Ingestion System
-Overview
+# JADE Assure — Ground-Truth Data Ingestion System
 
-Ja Assure is a schema-first, privacy-preserving data system designed to ensure ground-truth correctness, zero inference, and human-verified data ingestion.
-The system enforces strict validation at every layer and is intentionally designed to prevent hallucination, guessing, or automated extraction.
+## Overview
 
-This repository currently implements Phases 1–3 of the architecture:
+**JADE Assure** is a schema-first, privacy-preserving data system designed to ensure ground-truth correctness, zero inference, and human-verified data ingestion. The system enforces strict validation at every layer and is intentionally designed to prevent hallucination, guessing, or automated extraction.
 
-Canonical schema definition
+This repository implements a **FastAPI-based backend** with JSON schema validation, audit logging, and PostgreSQL-backed persistence.
 
-Database setup with schema authority
+## Core Design Principles
 
-Secure backend ingestion with audit logging
+✓ **Schema is the single source of truth** – JSON Schema Draft 2020-12  
+✓ **No inference, no guessing** – Strict validation only  
+✓ **Human-in-the-loop data entry** – Manual verification required  
+✓ **Immutable records** – Full audit trail  
+✓ **Explicit masking** – Sensitive data marked as "MASKED"  
+✓ **Local, privacy-first execution** – No external dependencies  
+✓ **Full auditability** – All operations logged  
 
-Core Design Principles
+## Features
 
-Schema is the single source of truth
+- 🔒 **JSON Schema Validation** – Enforce strict data structure compliance
+- 📝 **Audit Logging** – Track all record creation and rejection events
+- 🗄️ **PostgreSQL Backend** – JSONB storage for flexible, validated data
+- 📊 **Schema Versioning** – Support multiple active schema versions
+- 🔐 **Least-Privilege Access** – Database user with minimal permissions
+- 🚀 **REST API** – FastAPI with Swagger/OpenAPI documentation
 
-No inference, no guessing
+## Project Structure
 
-Human-in-the-loop data entry
+```
+Ja Assure/
+├── backend/
+│   ├── app/
+│   │   ├── main.py           # FastAPI application & endpoints
+│   │   ├── schema_loader.py   # Load active schema from database
+│   │   ├── validators.py      # JSON schema validation logic
+│   │   ├── db.py             # Database connection management
+│   │   ├── audit.py          # Audit logging functionality
+│   │   └── pyrightconfig.json # Type checking configuration
+│   ├── requirements.txt       # Python dependencies
+│   ├── .pylintrc             # Linting configuration
+│   └── pyrightconfig.json    # Pyright configuration
+├── db/
+│   ├── migrations/           # SQL migration scripts
+│   │   ├── 001_schema_versions.sql
+│   │   ├── 002_records.sql
+│   │   ├── 003_audit_logs.sql
+│   │   └── 004_triggers.sql
+│   ├── seed_schema.sql       # Initial schema data
+│   └── README.md             # Database setup guide
+├── schema/
+│   ├── proposal.schema.json   # JSON Schema for proposals
+│   ├── data.dictionary.md     # Human-readable data dictionary
+│   └── examples/
+│       ├── valid.json         # Valid example payload
+│       └── masked.json        # Example with masked data
+└── README.md                  # This file
+```
 
-Immutable records
+## Quick Start
 
-Explicit masking ("MASKED")
+### Prerequisites
 
-Local, privacy-first execution
+- **Python 3.13+**
+- **PostgreSQL 12+**
+- **pip** and **venv**
 
-Full auditability
+### 1. Clone the Repository
 
-Architecture (Implemented So Far)
-Phase 1 — Schema & Data Dictionary
+```bash
+git clone https://github.com/allu0786ansari/Secure_Jade.git
+cd Secure_Jade
+```
 
-Human-readable Data Dictionary
+### 2. Set Up Python Virtual Environment
 
-Machine-enforceable JSON Schema (Draft 2020-12)
+```bash
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1  # Windows PowerShell
+# or
+source .venv/bin/activate     # Linux/macOS
+```
 
-Example payloads for validation
+### 3. Install Dependencies
 
-Phase 2 — Database & Schema Authority
+```bash
+cd backend
+pip install -r requirements.txt
+```
 
-PostgreSQL with JSONB storage
+### 4. Set Up Database
 
-Versioned schema storage
+**Create PostgreSQL database and user:**
 
-Immutable records
+```sql
+-- Connect as superuser
+CREATE DATABASE jade_ground_truth;
+CREATE USER jade_user WITH PASSWORD 'jaassuregroup4';
 
-Audit logging
+-- Run migrations
+psql -U jade_user -d jade_ground_truth < ../db/migrations/001_schema_versions.sql
+psql -U jade_user -d jade_ground_truth < ../db/migrations/002_records.sql
+psql -U jade_user -d jade_ground_truth < ../db/migrations/003_audit_logs.sql
+psql -U jade_user -d jade_ground_truth < ../db/migrations/004_triggers.sql
 
-Least-privilege database access
+-- Seed initial schema
+psql -U jade_user -d jade_ground_truth < ../db/seed_schema.sql
+
+-- Grant permissions (as superuser)
+GRANT SELECT ON schema_versions TO jade_user;
+GRANT SELECT, INSERT ON records TO jade_user;
+GRANT SELECT, INSERT ON audit_logs TO jade_user;
+GRANT USAGE, SELECT ON SEQUENCE audit_logs_id_seq TO jade_user;
+```
+
+### 5. Start the Server
+
+```bash
+cd backend
+python -m uvicorn app.main:app --reload
+```
+
+Server runs at: **`http://127.0.0.1:8000`**
+
+## API Documentation
+
+### POST `/records` – Create a Record
+
+Create and validate a new record against the active schema.
+
+**Request:**
+```bash
+POST http://127.0.0.1:8000/records
+Content-Type: application/json
+
+{
+  "proposal_id": "PROP-001",
+  "applicant_name": "John Doe",
+  "applicant_email": "john@example.com",
+  "has_security": true,
+  "security_types": ["CCTV", "Security Guards"]
+}
+```
+
+**Success Response (200 OK):**
+```json
+{
+  "record_id": "550e8400-e29b-41d4-a716-446655440000",
+  "status": "stored"
+}
+```
+
+**Validation Error (422 Unprocessable Entity):**
+```json
+{
+  "detail": "Missing required property: 'proposal_id'"
+}
+```
+
+**Server Error (500 Internal Server Error):**
+```json
+{
+  "detail": "Internal Server Error"
+}
+```
+
+### Interactive API Docs
+
+- **Swagger UI:** `http://127.0.0.1:8000/docs`
+- **ReDoc:** `http://127.0.0.1:8000/redoc`
+
+## Testing with Postman
+
+1. Open Postman
+2. Create a **POST** request to `http://127.0.0.1:8000/records`
+3. Set **Content-Type** header to `application/json`
+4. Paste the example JSON payload above
+5. Click **Send**
+
+## Database Schema
+
+### `schema_versions` Table
+
+Stores active JSON schema versions.
+
+```sql
+CREATE TABLE schema_versions (
+    id SERIAL PRIMARY KEY,
+    version_number TEXT UNIQUE NOT NULL,
+    schema_json JSONB NOT NULL,
+    is_active BOOLEAN DEFAULT false,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+### `records` Table
+
+Immutable record storage with JSONB data.
+
+```sql
+CREATE TABLE records (
+    id UUID PRIMARY KEY,
+    schema_version TEXT NOT NULL,
+    data JSONB NOT NULL,
+    created_by TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+### `audit_logs` Table
+
+Complete audit trail of all operations.
+
+```sql
+CREATE TABLE audit_logs (
+    id SERIAL PRIMARY KEY,
+    record_id UUID,
+    action TEXT NOT NULL,
+    performed_by TEXT NOT NULL,
+    metadata JSONB,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+## Development
+
+### Type Checking
+
+```bash
+# Check types with Pyright
+cd backend
+python -m pyright app/
+```
+
+### Linting
+
+```bash
+# Check code with pylint
+python -m pylint app/
+```
+
+### Install Dev Dependencies
+
+```bash
+pip install pylint pyright
+```
+
+## Troubleshooting
+
+### "Permission denied for table schema_versions"
+
+Run this as a PostgreSQL superuser:
+
+```sql
+GRANT SELECT ON schema_versions TO jade_user;
+GRANT SELECT, INSERT ON records TO jade_user;
+GRANT SELECT, INSERT ON audit_logs TO jade_user;
+GRANT USAGE, SELECT ON SEQUENCE audit_logs_id_seq TO jade_user;
+```
+
+### "No active schema found"
+
+Seed the database with:
+
+```bash
+psql -U jade_user -d jade_ground_truth < db/seed_schema.sql
+```
+
+### Port 8000 already in use
+
+Kill the process:
+
+```bash
+# Windows
+taskkill /F /IM python.exe
+
+# Linux/macOS
+lsof -i :8000 | grep LISTEN | awk '{print $2}' | xargs kill -9
+```
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                          FastAPI Server                          │
+│                                                                   │
+│  GET  /docs          → Swagger UI                               │
+│  POST /records       → Validate & Store Record                  │
+│  GET  /redoc         → ReDoc (API docs)                         │
+└──────────────────┬──────────────────────────────────────────────┘
+                   │
+        ┌──────────┴──────────┐
+        │                     │
+┌───────▼────────┐  ┌────────▼────────┐
+│  schema_loader │  │   validators    │
+│                │  │                 │
+│ Load from DB   │  │ JSON Schema     │
+│ Cache in mem   │  │ Validation      │
+└────────┬───────┘  └────────┬────────┘
+         │                   │
+         └─────────┬─────────┘
+                   │
+              ┌────▼─────────────┐
+              │  PostgreSQL DB   │
+              │                  │
+              │ schema_versions  │
+              │ records          │
+              │ audit_logs       │
+              └──────────────────┘
+```
+
+## Security
+
+- ✓ All user input validated against JSON Schema
+- ✓ Database access restricted to least-privilege user
+- ✓ All operations logged immutably
+- ✓ No external API calls (local execution)
+- ✓ Explicit data masking support
+- ✓ Type-checked Python code
+
+## Contributing
+
+1. Create a feature branch: `git checkout -b feature/my-feature`
+2. Commit changes: `git commit -am 'Add my feature'`
+3. Push to branch: `git push origin feature/my-feature`
+4. Open a Pull Request
+
+## License
+
+[Your License Here]
+
+## Authors
+
+- **Ja Assure Team** – Ground-truth data validation
+- **Backend:** FastAPI + PostgreSQL
+- **Schema:** JSON Schema Draft 2020-12
 
 Phase 3 — Backend Ingestion API
 
