@@ -21,9 +21,11 @@ This repository implements a **FastAPI-based backend** with JSON schema validati
 - 🔒 **JSON Schema Validation** – Enforce strict data structure compliance
 - 📝 **Audit Logging** – Track all record creation and rejection events
 - 🗄️ **PostgreSQL Backend** – JSONB storage for flexible, validated data
-- 📊 **Schema Versioning** – Support multiple active schema versions
+- 📊 **Schema Versioning** – Support multiple active schema versions (v1.1 active)
 - 🔐 **Least-Privilege Access** – Database user with minimal permissions
 - 🚀 **REST API** – FastAPI with Swagger/OpenAPI documentation
+- 🔍 **Field-Level Queries** – Query nested fields using dot notation
+- 🛡️ **Query Validation** – Reject disallowed queries with audit trail
 
 ## Project Structure
 
@@ -31,15 +33,19 @@ This repository implements a **FastAPI-based backend** with JSON schema validati
 Ja Assure/
 ├── backend/
 │   ├── app/
-│   │   ├── main.py           # FastAPI application & endpoints
+│   │   ├── main.py            # FastAPI application & endpoints
 │   │   ├── schema_loader.py   # Load active schema from database
 │   │   ├── validators.py      # JSON schema validation logic
-│   │   ├── db.py             # Database connection management
-│   │   ├── audit.py          # Audit logging functionality
+│   │   ├── db.py              # Database connection management
+│   │   ├── audit.py           # Audit logging functionality
+│   │   ├── query_controller.py # Record retrieval by ID
+│   │   ├── field_resolver.py  # Resolve nested field queries
+│   │   ├── query_rejection.py # Query rejection handling
+│   │   ├── query_rules.py     # Field access rules
 │   │   └── pyrightconfig.json # Type checking configuration
 │   ├── requirements.txt       # Python dependencies
-│   ├── .pylintrc             # Linting configuration
-│   └── pyrightconfig.json    # Pyright configuration
+│   ├── .pylintrc              # Linting configuration
+│   └── pyrightconfig.json     # Pyright configuration
 ├── db/
 │   ├── migrations/           # SQL migration scripts
 │   │   ├── 001_schema_versions.sql
@@ -122,11 +128,17 @@ python -m uvicorn app.main:app --reload
 
 Server runs at: **`http://127.0.0.1:8000`**
 
+**Or with the virtual environment on Windows:**
+```powershell
+cd backend
+& "../.venv/Scripts/python.exe" -m uvicorn app.main:app --reload
+```
+
 ## API Documentation
 
 ### POST `/records` – Create a Record
 
-Create and validate a new record against the active schema.
+Create and validate a new record against the active schema (v1.1).
 
 **Request:**
 ```bash
@@ -135,10 +147,21 @@ Content-Type: application/json
 
 {
   "proposal_id": "PROP-001",
-  "applicant_name": "John Doe",
-  "applicant_email": "john@example.com",
-  "has_security": true,
-  "security_types": ["CCTV", "Security Guards"]
+  "proposer": {
+    "name": "John Doe",
+    "email": "john@example.com"
+  },
+  "security": {
+    "has_security": true,
+    "cctv": {
+      "installed": true,
+      "coverage_areas": ["entrance", "parking"]
+    },
+    "alarm_system": {
+      "installed": true,
+      "type": "Fire"
+    }
+  }
 }
 ```
 
@@ -164,6 +187,66 @@ Content-Type: application/json
 }
 ```
 
+### GET `/records/{record_id}` – Retrieve a Record
+
+Retrieve a stored record by its unique ID.
+
+**Request:**
+```bash
+GET http://127.0.0.1:8000/records/550e8400-e29b-41d4-a716-446655440000
+```
+
+**Success Response (200 OK):**
+```json
+{
+  "record_id": "550e8400-e29b-41d4-a716-446655440000",
+  "data": {
+    "proposal_id": "PROP-001",
+    "proposer": {
+      "name": "John Doe",
+      "email": "john@example.com"
+    },
+    "security": {
+      "has_security": true,
+      "cctv": {
+        "installed": true
+      }
+    }
+  }
+}
+```
+
+### POST `/query` – Query a Specific Field
+
+Query a specific field from a record using dot notation for nested fields.
+
+**Request:**
+```bash
+POST http://127.0.0.1:8000/query
+Content-Type: application/json
+
+{
+  "record_id": "550e8400-e29b-41d4-a716-446655440000",
+  "field": "security.cctv.installed"
+}
+```
+
+**Success Response (200 OK):**
+```json
+{
+  "record_id": "550e8400-e29b-41d4-a716-446655440000",
+  "field": "security.cctv.installed",
+  "answer": true
+}
+```
+
+**Error Response (400 Bad Request):**
+```json
+{
+  "detail": "Query type not supported"
+}
+```
+
 ### Interactive API Docs
 
 - **Swagger UI:** `http://127.0.0.1:8000/docs`
@@ -177,6 +260,23 @@ Content-Type: application/json
 4. Paste the example JSON payload above
 5. Click **Send**
 
+## Schema Version: v1.1
+
+The active schema version is **v1.1**, which defines the structure for proposal records including:
+
+- **Proposer Details**: Name and email (supports masking)
+- **Premises Information**: Address and construction type
+- **Security Details**: CCTV, alarm systems, security guards
+- **Claims History**: Past claims and remarks
+
+The schema follows JSON Schema Draft 2020-12 and enforces:
+- Required fields: `proposal_id` and `security.has_security`
+- Conditional validation: If `has_security` is true, CCTV and alarm_system details are required
+- Support for `null` values to represent masked data
+- Type safety for all fields
+
+See [schema/proposal.schema.json](schema/proposal.schema.json) for the complete schema definition and [schema/data.dictionary.md](schema/data.dictionary.md) for field-level documentation.
+
 ## Database Schema
 
 ### `schema_versions` Table
@@ -186,7 +286,7 @@ Stores active JSON schema versions.
 ```sql
 CREATE TABLE schema_versions (
     id SERIAL PRIMARY KEY,
-    version_number TEXT UNIQUE NOT NULL,
+    version TEXT UNIQUE NOT NULL,
     schema_json JSONB NOT NULL,
     is_active BOOLEAN DEFAULT false,
     created_at TIMESTAMP DEFAULT NOW()
@@ -335,167 +435,3 @@ lsof -i :8000 | grep LISTEN | awk '{print $2}' | xargs kill -9
 - **Backend:** FastAPI + PostgreSQL
 - **Schema:** JSON Schema Draft 2020-12
 
-Phase 3 — Backend Ingestion API
-
-FastAPI backend
-
-Runtime schema loading from database
-
-Strict JSON validation
-
-Immutable inserts
-
-Automatic audit logging
-
-Project Structure
-JA_ASSURE/
-├── schema/
-│   ├── proposal.schema.json      # Canonical JSON Schema (v1.0)
-│   ├── data.dictionary.md        # Human-readable data dictionary
-│   └── examples/
-│       ├── valid.json            # Valid example payload
-│       └── masked.json           # Masked example payload
-│
-├── db/
-│   ├── migrations/
-│   │   ├── 001_schema_versions.sql
-│   │   ├── 002_records.sql
-│   │   ├── 003_audit_logs.sql
-│   │   └── 004_triggers.sql
-│   ├── seed_schema.sql
-│   └── README.md
-│
-├── backend/
-│   ├── app/
-│   │   ├── main.py               # FastAPI app
-│   │   ├── db.py                 # Database connection
-│   │   ├── schema_loader.py      # Load active schema from DB
-│   │   ├── validators.py         # JSON Schema validation
-│   │   └── audit.py              # Audit logging
-│   └── requirements.txt
-│
-└── README.md
-
-Database Design
-Tables
-schema_versions
-
-Stores versioned JSON Schemas.
-
-Column	Purpose
-version	Schema version identifier
-schema_json	Canonical JSON Schema
-is_active	Active schema flag
-
-Only one schema can be active at a time.
-
-records
-
-Stores immutable proposal records.
-
-Column	Purpose
-id	System-generated UUID
-schema_version	Schema version used
-data	JSONB payload
-created_by	Operator identifier
-created_at	Timestamp
-
-⚠️ Updates are disallowed by trigger.
-
-audit_logs
-
-Tracks all system actions.
-
-Action Examples
-CREATE_RECORD
-REJECTED_RECORD
-QUERY_RECORD (future)
-Backend API (Implemented)
-POST /records
-
-Creates a new immutable record after validation.
-
-Behavior
-
-Loads active schema from database
-
-Validates request payload
-
-Rejects invalid or incomplete data
-
-Inserts record with generated UUID
-
-Writes audit log entry
-
-Example Request
-{
-  "proposal_id": "PROP-001",
-  "applicant_name": "Rahul Sharma",
-  "applicant_email": "rahul.sharma@example.com",
-  "has_security": true,
-  "security_types": ["CCTV", "Security Guards"]
-}
-
-Example Response
-{
-  "record_id": "c1c9c3c8-7a8e-4b9e-9e9c-3d7b6d0e2a11",
-  "status": "stored"
-}
-
-Validation Rules
-
-Payload must conform exactly to the active JSON Schema
-
-Required fields are enforced
-
-Conditional fields are enforced
-
-Masked data must be explicit ("MASKED" or null)
-
-Extra fields are rejected
-
-No automatic enrichment or inference
-
-Technology Stack
-Layer	Technology
-Backend API	FastAPI
-Validation	jsonschema (Draft 2020-12)
-Database	PostgreSQL (JSONB)
-DB Driver	psycopg2
-Runtime	Local (no cloud dependencies)
-Security Model
-
-Local-only execution
-
-No external APIs
-
-Least-privilege DB user
-
-Immutable data storage
-
-Full audit logging
-
-Masked data never reconstructed
-
-Current Status
-
-✅ Schema defined and validated
-✅ Database created with schema authority
-✅ Backend ingestion API implemented
-✅ Validation and audit logging working
-
-Next Planned Phases
-
-Phase 4 — Query Controller (read-only, no inference)
-
-Phase 5 — Controlled LLM interface
-
-Phase 6 — Manual Extraction UI
-
-Phase 7 — Security testing & documentation
-
-Key Guarantee
-
-If data is not explicitly present in JSON, the system will not answer.
-
-This guarantee is enforced by design, not by prompt instructions.

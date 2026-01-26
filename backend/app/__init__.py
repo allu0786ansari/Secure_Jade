@@ -1,0 +1,1 @@
+"""JA Assure backend application package."""

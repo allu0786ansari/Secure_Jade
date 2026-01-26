@@ -4,32 +4,117 @@ from uuid import uuid4
 from psycopg2.extras import Json
 from fastapi import FastAPI, HTTPException
 
-from .audit import log_action  # pylint: disable=relative-beyond-top-level
-from .db import get_connection  # pylint: disable=relative-beyond-top-level
-from .schema_loader import load_active_schema  # pylint: disable=relative-beyond-top-level
-from .validators import validate_payload  # pylint: disable=relative-beyond-top-level
+from .query_controller import get_record_by_id
+from .field_resolver import resolve_field
+from .audit import log_action
+from .db import get_connection
+from .schema_loader import load_active_schema
+from .validators import validate_payload
 
 app = FastAPI()
 
-# Load active schema ONCE at startup, with fallback
-_validator = None
 
-def get_validator():
-    """Get the cached validator, loading lazily if needed."""
-    global _validator
-    if _validator is None:
-        try:
-            _validator = load_active_schema()
-        except Exception as e:
-            raise RuntimeError(f"Failed to load schema: {e}") from e
-    return _validator
+def is_disallowed_query(field: str) -> bool:
+    """Reject queries that imply inference, reasoning, or comparison."""
+    disallowed_keywords = [
+        "why",
+        "how",
+        "compare",
+        "risk",
+        "should",
+        "suggest",
+        "recommend",
+        "predict",
+        "analyze",
+        "analysis",
+        "better",
+        "worse"
+    ]
+    return any(keyword in field.lower() for keyword in disallowed_keywords)
+
+
+class ValidatorCache:
+    """Cache for the active schema validator and version."""
+    _validator = None
+    _version = None
+
+    @classmethod
+    def load(cls):
+        validator, version = load_active_schema()
+        cls._validator = validator
+        cls._version = version
+
+    @classmethod
+    def get_validator(cls):
+        if cls._validator is None:
+            cls.load()
+        return cls._validator
+
+    @classmethod
+    def get_version(cls):
+        if cls._version is None:
+            cls.load()
+        return cls._version
+
+
+@app.get("/records/{record_id}")
+def read_record(record_id: str):
+    data = get_record_by_id(record_id)
+
+    log_action(
+        action="READ_RECORD",
+        performed_by="internal_user",
+        record_id=record_id
+    )
+
+    return {
+        "record_id": record_id,
+        "data": data
+    }
+
+
+@app.post("/query")
+def query_record(payload: dict):
+    record_id = payload.get("record_id")
+    field = payload.get("field")
+
+    if not record_id or not field:
+        raise HTTPException(status_code=400, detail="record_id and field required")
+
+    # 🔒 Reject inference BEFORE data access
+    if is_disallowed_query(field):
+        log_action(
+            action="REJECTED_QUERY",
+            performed_by="internal_user",
+            record_id=record_id,
+            metadata={"field": field, "reason": "disallowed_query"}
+        )
+        raise HTTPException(
+            status_code=400,
+            detail="Query type not supported"
+        )
+
+    data = get_record_by_id(record_id)
+    answer = resolve_field(data, field)
+
+    log_action(
+        action="QUERY_RECORD",
+        performed_by="internal_user",
+        record_id=record_id,
+        metadata={"field": field}
+    )
+
+    return {
+        "record_id": record_id,
+        "field": field,
+        "answer": answer
+    }
 
 
 @app.post("/records")
 def create_record(payload: dict):
-    """Create and validate a new record against the active schema."""
     try:
-        validate_payload(get_validator(), payload)
+        validate_payload(ValidatorCache.get_validator(), payload)
     except Exception as e:
         log_action(
             action="REJECTED_RECORD",
@@ -50,7 +135,7 @@ def create_record(payload: dict):
         """,
         (
             record_id,
-            "v1.0",
+            ValidatorCache.get_version(),
             Json(payload),
             "manual_operator"
         )

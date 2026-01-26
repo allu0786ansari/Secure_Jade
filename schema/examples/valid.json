@@ -1,7 +1,34 @@
 {
-  "proposal_id": "PROP-001",
-  "applicant_name": "Rahul Sharma",
-  "applicant_email": "rahul.sharma@example.com",
-  "has_security": true,
-  "security_types": ["CCTV", "Security Guards"]
+  "proposal_id": "PROP-101",
+
+  "proposer": {
+    "name": "Rahul Sharma",
+    "email": "rahul.sharma@example.com"
+  },
+
+  "premises": {
+    "address": "12 Industrial Estate, Sector 5",
+    "construction_type": "RCC"
+  },
+
+  "security": {
+    "has_security": true,
+    "cctv": {
+      "installed": true,
+      "coverage_areas": ["Entrance", "Warehouse", "Cash Counter"]
+    },
+    "alarm_system": {
+      "installed": true,
+      "type": "Burglar"
+    },
+    "guards": {
+      "present": true,
+      "armed": false
+    }
+  },
+
+  "claims_history": {
+    "has_claims": false,
+    "remarks": null
+  }
 }

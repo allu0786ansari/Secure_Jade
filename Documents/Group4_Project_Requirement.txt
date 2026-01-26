@@ -1,0 +1,66 @@
+PROJECT REQUIREMENT – GROUP 4
+LLM Chatbot Training using Masked Proposal Forms
+
+OBJECTIVE
+Design and train an internal LLM-powered chatbot using manually extracted, masked proposal form data. The chatbot must provide accurate, privacy-safe insights strictly based on the supplied dataset and act as the ground-truth intelligence layer for future automation.
+
+SCOPE OF WORK
+
+1. DEFINE CANONICAL DATA SCHEMA
+- Identify and finalize all required data fields from masked proposal forms.
+- The schema must cover the following major sections:
+  - Business / Proposer information (masked)
+  - Risk location and premises details
+  - Stock, cash, and sum insured values
+  - Security setup (CCTV, alarms, safes, strong room, access controls)
+  - Transit and guards
+  - Claims and insurance history
+- Create a data dictionary containing:
+  - Field name
+  - Field description
+  - Data type
+  - Allowed values / enums
+
+2. MANUAL DATA EXTRACTION
+- Manually extract data from the provided masked proposal forms.
+- Ensure:
+  - No attempt is made to infer or reconstruct masked/redacted information
+  - High accuracy and consistency across records
+- Store the extracted data in a structured JSON format.
+
+3. DATA CLEANING AND NORMALIZATION
+- Standardize:
+  - Date formats
+  - Currency values (SGD)
+  - Boolean and categorical fields
+- Validate numeric ranges and mandatory fields.
+
+4. LLM TRAINING AND CHATBOT SETUP
+- Train or configure the LLM using the curated dataset.
+- Chatbot responses must:
+  - Be strictly limited to available proposal data
+  - Avoid assumptions, extrapolation, or hallucinations
+- Implement fallback responses for unsupported or unknown queries.
+
+5. VALIDATION AND QUALITY CHECK
+- Test the chatbot using sample business queries such as:
+  - Proposal summaries
+  - Security setup comparisons
+  - Risk and coverage insights
+- Validate responses for accuracy, consistency, and compliance.
+
+DELIVERABLES
+- Final canonical data schema and data dictionary
+- Manually curated JSON dataset
+- Working internal LLM chatbot
+- Sample validated queries and responses
+
+KEY CONSTRAINTS
+- Masked data must remain masked at all times.
+- Accuracy is prioritized over volume.
+- The schema defined by Group 4 will be the reference standard for Group 5 automation.
+
+SUCCESS CRITERIA
+- Chatbot responses are accurate and traceable to source data.
+- Dataset is clean, structured, and reusable.
+- Schema is stable and ready for automated ingestion.

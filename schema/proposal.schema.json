@@ -11,44 +11,118 @@
       "description": "Unique identifier for the proposal"
     },
 
-    "applicant_name": {
-      "type": ["string", "null"],
-      "description": "Full name of the applicant or MASKED",
-      "pattern": "^[A-Za-z ]+$"
+    "proposer": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": ["string", "null"],
+          "description": "Name of proposer or MASKED",
+          "pattern": "^[A-Za-z ]+$"
+        },
+        "email": {
+          "type": ["string", "null"],
+          "format": "email",
+          "description": "Email address of proposer or MASKED"
+        }
+      }
     },
 
-    "applicant_email": {
-      "type": ["string", "null"],
-      "format": "email",
-      "description": "Email address of the applicant or MASKED"
+    "premises": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "address": {
+          "type": ["string", "null"],
+          "description": "Risk location address or MASKED"
+        },
+        "construction_type": {
+          "type": ["string", "null"],
+          "description": "Construction details (e.g., RCC, brick, mixed)"
+        }
+      }
     },
 
-    "has_security": {
-      "type": "boolean",
-      "description": "Indicates whether the proposal includes security arrangements"
-    },
+    "security": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "has_security": {
+          "type": "boolean",
+          "description": "Whether any security arrangements exist"
+        },
 
-    "security_types": {
-      "type": "array",
-      "items": {
-        "type": "string",
-        "minLength": 1
+        "cctv": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "installed": { "type": ["boolean", "null"] },
+            "coverage_areas": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+
+        "alarm_system": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "installed": { "type": ["boolean", "null"] },
+            "type": {
+              "type": ["string", "null"],
+              "description": "Burglar / Fire / Combined"
+            }
+          }
+        },
+
+        "guards": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "present": { "type": ["boolean", "null"] },
+            "armed": { "type": ["boolean", "null"] }
+          }
+        }
       },
-      "description": "List of security mechanisms if applicable"
+      "required": ["has_security"]
+    },
+
+    "claims_history": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "has_claims": {
+          "type": ["boolean", "null"],
+          "description": "Whether claims exist in past years"
+        },
+        "remarks": {
+          "type": ["string", "null"],
+          "description": "Claim details or NIL"
+        }
+      }
     }
   },
 
-  "required": ["proposal_id", "has_security"],
+  "required": ["proposal_id", "security"],
 
   "allOf": [
     {
       "if": {
         "properties": {
-          "has_security": { "const": true }
+          "security": {
+            "properties": {
+              "has_security": { "const": true }
+            }
+          }
         }
       },
       "then": {
-        "required": ["security_types"]
+        "properties": {
+          "security": {
+            "required": ["cctv", "alarm_system"]
+          }
+        }
       }
     }
   ]

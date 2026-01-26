@@ -1,6 +1,34 @@
 {
-  "proposal_id": "PROP-002",
-  "applicant_name": "MASKED",
-  "applicant_email": null,
-  "has_security": false
+  "proposal_id": "PROP-102",
+
+  "proposer": {
+    "name": "MASKED",
+    "email": null
+  },
+
+  "premises": {
+    "address": "MASKED",
+    "construction_type": null
+  },
+
+  "security": {
+    "has_security": false,
+    "cctv": {
+      "installed": null,
+      "coverage_areas": []
+    },
+    "alarm_system": {
+      "installed": null,
+      "type": null
+    },
+    "guards": {
+      "present": null,
+      "armed": null
+    }
+  },
+
+  "claims_history": {
+    "has_claims": null,
+    "remarks": "NIL"
+  }
 }
