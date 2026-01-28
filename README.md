@@ -69,7 +69,7 @@ Ja Assure/
 
 - **Python 3.13+**
 - **PostgreSQL 12+**
-- **pip** and **venv**
+- **pip** and **venv** along with **pdfplumber**
 
 ### 1. Clone the Repository
 
