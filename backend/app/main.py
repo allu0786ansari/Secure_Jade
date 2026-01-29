@@ -1,5 +1,6 @@
 """FastAPI application for JADE schema validation and record storage."""
 
+from .ollama_client import rephrase
 from uuid import uuid4
 from psycopg2.extras import Json
 from fastapi import FastAPI, HTTPException
@@ -95,7 +96,10 @@ def query_record(payload: dict):
         )
 
     data = get_record_by_id(record_id)
-    answer = resolve_field(data, field)
+    #answer = resolve_field(data, field)
+    raw_answer = resolve_field(data, field)
+    answer = rephrase(str(raw_answer))
+
 
     log_action(
         action="QUERY_RECORD",
