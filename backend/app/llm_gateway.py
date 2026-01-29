@@ -1,4 +1,7 @@
-"""FastAPI application for JADE schema validation and record storage."""
+"""
+FastAPI application for JADE schema validation, record storage,
+controlled querying, and safe chat interface.
+"""
 
 from uuid import uuid4
 from psycopg2.extras import Json
@@ -14,6 +17,9 @@ from .validators import validate_payload
 app = FastAPI()
 
 
+# -------------------------------------------------
+# 🔒 Query rejection rules (GLOBAL)
+# -------------------------------------------------
 def is_disallowed_query(field: str) -> bool:
     """Reject queries that imply inference, reasoning, or comparison."""
     disallowed_keywords = [
@@ -33,6 +39,9 @@ def is_disallowed_query(field: str) -> bool:
     return any(keyword in field.lower() for keyword in disallowed_keywords)
 
 
+# -------------------------------------------------
+# 📦 Schema Validator Cache
+# -------------------------------------------------
 class ValidatorCache:
     """Cache for the active schema validator and version."""
     _validator = None
@@ -57,6 +66,9 @@ class ValidatorCache:
         return cls._version
 
 
+# -------------------------------------------------
+# 📄 Record APIs
+# -------------------------------------------------
 @app.get("/records/{record_id}")
 def read_record(record_id: str):
     data = get_record_by_id(record_id)
@@ -73,46 +85,9 @@ def read_record(record_id: str):
     }
 
 
-@app.post("/query")
-def query_record(payload: dict):
-    record_id = payload.get("record_id")
-    field = payload.get("field")
-
-    if not record_id or not field:
-        raise HTTPException(status_code=400, detail="record_id and field required")
-
-    # 🔒 Reject inference BEFORE data access
-    if is_disallowed_query(field):
-        log_action(
-            action="REJECTED_QUERY",
-            performed_by="internal_user",
-            record_id=record_id,
-            metadata={"field": field, "reason": "disallowed_query"}
-        )
-        raise HTTPException(
-            status_code=400,
-            detail="Query type not supported"
-        )
-
-    data = get_record_by_id(record_id)
-    answer = resolve_field(data, field)
-
-    log_action(
-        action="QUERY_RECORD",
-        performed_by="internal_user",
-        record_id=record_id,
-        metadata={"field": field}
-    )
-
-    return {
-        "record_id": record_id,
-        "field": field,
-        "answer": answer
-    }
-
-
 @app.post("/records")
 def create_record(payload: dict):
+    """Create and validate a new record against the active schema."""
     try:
         validate_payload(ValidatorCache.get_validator(), payload)
     except Exception as e:
@@ -157,14 +132,52 @@ def create_record(payload: dict):
     }
 
 
+# -------------------------------------------------
+# 🔎 Deterministic Query API (SOURCE OF TRUTH)
+# -------------------------------------------------
+@app.post("/query")
+def query_record(payload: dict):
+    record_id = payload.get("record_id")
+    field = payload.get("field")
+
+    if not record_id or not field:
+        raise HTTPException(status_code=400, detail="record_id and field required")
+
+    # 🔒 Reject inference BEFORE data access
+    if is_disallowed_query(field):
+        log_action(
+            action="REJECTED_QUERY",
+            performed_by="internal_user",
+            record_id=record_id,
+            metadata={"field": field, "reason": "disallowed_query"}
+        )
+        raise HTTPException(status_code=400, detail="Query type not supported")
+
+    data = get_record_by_id(record_id)
+    answer = resolve_field(data, field)
+
+    log_action(
+        action="QUERY_RECORD",
+        performed_by="internal_user",
+        record_id=record_id,
+        metadata={"field": field}
+    )
+
+    return {
+        "record_id": record_id,
+        "field": field,
+        "answer": answer
+    }
+
+
+# -------------------------------------------------
+# 💬 Chat API (LLM / UI Layer ONLY)
+# -------------------------------------------------
 @app.post("/chat")
 def chat(payload: dict):
     """
-    Expected payload:
-    {
-      "record_id": "<uuid>",
-      "question": "Is CCTV installed?"
-    }
+    Chat endpoint acts as a UI adapter.
+    It does NOT infer, explain, or reason.
     """
 
     record_id = payload.get("record_id")
@@ -176,10 +189,7 @@ def chat(payload: dict):
             detail="record_id and question are required"
         )
 
-    # 🔒 VERY IMPORTANT:
-    # The LLM is NOT allowed to interpret questions freely.
-    # We map known questions to known fields.
-
+    # 🔒 Fixed question → field mapping
     QUESTION_FIELD_MAP = {
         "is cctv installed": "security.cctv.installed",
         "does the premises have cctv": "security.cctv.installed",
@@ -187,7 +197,7 @@ def chat(payload: dict):
         "has there been any claims": "claims_history.has_claims"
     }
 
-    normalized = question.lower().strip().rstrip('?!')
+    normalized = question.lower().strip()
 
     if normalized not in QUESTION_FIELD_MAP:
         return {
@@ -195,6 +205,12 @@ def chat(payload: dict):
         }
 
     field = QUESTION_FIELD_MAP[normalized]
+
+    # Reuse the SAME logic as /query
+    if is_disallowed_query(field):
+        return {
+            "answer": "Query type not supported."
+        }
 
     data = get_record_by_id(record_id)
     answer = resolve_field(data, field)
