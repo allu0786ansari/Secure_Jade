@@ -26,6 +26,8 @@ This repository implements a **FastAPI-based backend** with JSON schema validati
 - 🚀 **REST API** – FastAPI with Swagger/OpenAPI documentation
 - 🔍 **Field-Level Queries** – Query nested fields using dot notation
 - 🛡️ **Query Validation** – Reject disallowed queries with audit trail
+- 🤖 **STRICT Ollama Integration** – Deterministic LLM wrapper preventing hallucination & inference
+- ⚡ **Local LLM Execution** – Private, on-device language model processing
 
 ## Project Structure
 
@@ -34,6 +36,7 @@ Ja Assure/
 ├── backend/
 │   ├── app/
 │   │   ├── main.py            # FastAPI application & endpoints
+│   │   ├── ollama_client.py   # STRICT Ollama wrapper for LLM control
 │   │   ├── schema_loader.py   # Load active schema from database
 │   │   ├── validators.py      # JSON schema validation logic
 │   │   ├── db.py              # Database connection management
@@ -42,6 +45,7 @@ Ja Assure/
 │   │   ├── field_resolver.py  # Resolve nested field queries
 │   │   ├── query_rejection.py # Query rejection handling
 │   │   ├── query_rules.py     # Field access rules
+│   │   ├── llm_contract.md    # LLM behavior constraints & rules
 │   │   └── pyrightconfig.json # Type checking configuration
 │   ├── requirements.txt       # Python dependencies
 │   ├── .pylintrc              # Linting configuration
@@ -70,6 +74,10 @@ Ja Assure/
 - **Python 3.13+**
 - **PostgreSQL 12+**
 - **pip** and **venv** along with **pdfplumber**
+- **Ollama** – Local LLM execution engine (https://ollama.ai)
+  - Download from https://ollama.ai/download
+  - Runs on port 11434 (default)
+  - Models: `llama2`, `mistral`, etc.
 
 ### 1. Clone the Repository
 
@@ -87,14 +95,34 @@ python -m venv .venv
 source .venv/bin/activate     # Linux/macOS
 ```
 
-### 3. Install Dependencies
+### 3. Install Ollama
+
+**Download and install Ollama:**
+- Windows: https://ollama.ai/download/windows
+- macOS: https://ollama.ai/download/mac
+- Linux: https://ollama.ai/download/linux
+
+**Pull a model (e.g., Mistral):**
+```bash
+ollama pull mistral
+# or for Llama 2:
+ollama pull llama2
+```
+
+**Start Ollama service:**
+```bash
+ollama serve
+```
+Ollama will run on `http://localhost:11434`
+
+### 4. Install Python Dependencies
 
 ```bash
 cd backend
 pip install -r requirements.txt
 ```
 
-### 4. Set Up Database
+### 5. Set Up Database
 
 **Create PostgreSQL database and user:**
 
@@ -119,11 +147,17 @@ GRANT SELECT, INSERT ON audit_logs TO jade_user;
 GRANT USAGE, SELECT ON SEQUENCE audit_logs_id_seq TO jade_user;
 ```
 
-### 5. Start the Server
+### 6. Start the Backend Server
 
+**Ensure Ollama is running first:**
+```bash
+ollama serve
+```
+
+**In a new terminal, start the backend:**
 ```bash
 cd backend
-python -m uvicorn app.main:app --reload
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
 Server runs at: **`http://127.0.0.1:8000`**
@@ -132,6 +166,76 @@ Server runs at: **`http://127.0.0.1:8000`**
 ```powershell
 cd backend
 & "../.venv/Scripts/python.exe" -m uvicorn app.main:app --reload
+```
+
+## STRICT Ollama Wrapper — Controlled LLM Behavior
+
+**STEP 3 — LLM Safety Layer**
+
+The `ollama_client.py` module provides a **STRICT wrapper** around Ollama that enforces deterministic, hallucination-free behavior. This is critical for ensuring the LLM **CANNOT**:
+
+- ❌ Infer or reason about data
+- ❌ Explain "why" or "how"
+- ❌ Compare records or aggregate data
+- ❌ Predict or extrapolate
+- ❌ Answer unsupported questions
+- ❌ Add new information beyond ground-truth
+
+**What the LLM CAN do:**
+- ✓ Rephrase approved answers in neutral, factual tone
+- ✓ Return exact values from the database
+- ✓ Comply with the `/chat` endpoint's fixed Q→Field mapping
+- ✓ Return "Information not available" for masked/missing data
+
+### How It Works
+
+The `rephrase()` function in `ollama_client.py`:
+
+1. **Accepts** only pre-approved, database-backed answers
+2. **Enforces** a strict system prompt that prohibits inference
+3. **Returns** either the input (if already approved) or a neutral rephrasing
+4. **Rejects** any attempt to add information not in the database
+
+### Example Usage
+
+```python
+from app.ollama_client import rephrase
+
+# Database returned this answer
+answer = "true"  # CCTV installed = true
+
+# LLM rephrase (safe, no hallucination)
+response = rephrase(answer)
+# Output: "true" (or similar neutral rephrasing)
+
+# If database returns this:
+answer = "Information not available"
+
+# LLM must return exactly:
+response = rephrase(answer)
+# Output: "Information not available"
+```
+
+### Critical Rules
+
+From `llm_contract.md`:
+
+```
+ALLOWED:
+- Translate user questions into structured field queries
+- Rephrase factual responses without adding information
+- Comply with the /chat endpoint mapping
+
+DISALLOWED:
+- Inferring missing data
+- Explaining "why" or "how"
+- Comparing records
+- Aggregating or predicting
+- Answering if API response is "Information not available"
+
+MANDATORY:
+If the API returns "Information not available",
+the LLM must return EXACTLY: "Information not available."
 ```
 
 ## API Documentation
@@ -246,6 +350,49 @@ Content-Type: application/json
   "detail": "Query type not supported"
 }
 ```
+
+### POST `/chat` – Chat with Fixed Question Mapping
+
+Safe chat endpoint that uses a **fixed Q→Field mapping** to prevent inference.
+
+The LLM is **NOT allowed** to interpret questions freely. This endpoint maps known questions to known fields and returns only ground-truth data.
+
+**Allowed Questions (Fixed Mapping):**
+- "is cctv installed" → `security.cctv.installed`
+- "does the premises have cctv" → `security.cctv.installed`
+- "are security guards present" → `security.guards.present`
+- "has there been any claims" → `claims_history.has_claims`
+
+**Request:**
+```bash
+POST http://127.0.0.1:8000/chat
+Content-Type: application/json
+
+{
+  "record_id": "550e8400-e29b-41d4-a716-446655440000",
+  "question": "is cctv installed?"
+}
+```
+
+**Success Response (200 OK):**
+```json
+{
+  "record_id": "550e8400-e29b-41d4-a716-446655440000",
+  "question": "is cctv installed?",
+  "answer": true
+}
+```
+
+**Unsupported Question Response (200 OK):**
+```json
+{
+  "record_id": "550e8400-e29b-41d4-a716-446655440000",
+  "question": "why is cctv installed?",
+  "answer": "Query type not supported."
+}
+```
+
+**Note:** Questions containing inference keywords (why, how, compare, risk, predict, analyze, etc.) are rejected at the API layer.
 
 ### Interactive API Docs
 
